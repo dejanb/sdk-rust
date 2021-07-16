@@ -163,28 +163,6 @@ mod tests {
     use serde_json::json;
 
     #[actix_rt::test]
-    async fn test_request() {
-        let expected = EventBuilderV10::new()
-            .id("0001")
-            .ty("example.test")
-            .source("http://localhost/")
-            .extension("someint", "10")
-            .build()
-            .unwrap();
-
-        let (req, payload) = test::TestRequest::post()
-            .header("ce-specversion", "1.0")
-            .header("ce-id", "0001")
-            .header("ce-type", "example.test")
-            .header("ce-source", "http://localhost/")
-            .header("ce-someint", "10")
-            .to_http_parts();
-
-        let resp = req.to_event(web::Payload(payload)).await.unwrap();
-        assert_eq!(expected, resp);
-    }
-
-    #[actix_rt::test]
     async fn test_request_with_full_data() {
         let j = json!({"hello": "world"});
 
