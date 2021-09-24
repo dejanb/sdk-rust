@@ -6,7 +6,7 @@ use crate::binding::{
     CLOUDEVENTS_JSON_HEADER,
 };
 use crate::event::SpecVersion;
-use crate::message::{BinarySerializer, MessageAttributeValue, Result, StructuredSerializer};
+use crate::message::{BinarySerializer, MessageAttributeValue, Result, StructuredSerializer, Error};
 
 macro_rules! str_to_header_value {
     ($header_value:expr) => {
@@ -27,6 +27,35 @@ impl<T> Serializer<T> {
         let builder = Rc::new(RefCell::new(delegate));
         Serializer { builder }
     }
+}
+
+impl BinarySerializer<http::request::Request<Vec<u8>>> for http::request::Builder {
+
+    fn set_spec_version(mut self, sv: SpecVersion) -> Result<Self> {
+        self = self.header(SPEC_VERSION_HEADER, &sv.to_string());
+        Ok(self)
+    }
+
+    fn set_attribute(mut self, name: &str, value: MessageAttributeValue) -> Result<Self> {
+        let key = &header_prefix(name);
+        self = self.header(key, &value.to_string());
+        Ok(self)
+    }
+
+    fn set_extension(mut self, name: &str, value: MessageAttributeValue) -> Result<Self> {
+        let key = &header_prefix(name);
+        self = self.header(key, &value.to_string());
+        Ok(self)
+    }
+
+    fn end_with_data(self, bytes: Vec<u8>) -> Result<http::request::Request<Vec<u8>>> {
+        self.body(bytes).map_err(|e| Error::Other { source: Box::new(e) })
+    }
+
+    fn end(self) -> Result<http::request::Request<Vec<u8>>> {
+        self.body(Vec::new()).map_err(|e| Error::Other { source: Box::new(e) })
+    }
+
 }
 
 impl<T> BinarySerializer<T> for Serializer<T> {
@@ -68,5 +97,20 @@ impl<T> StructuredSerializer<T> for Serializer<T> {
             http::HeaderValue::from_static(CLOUDEVENTS_JSON_HEADER),
         );
         builder.body(bytes)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::message::BinaryDeserializer;
+    use crate::test::fixtures;
+
+    #[test]
+    fn test_event_to_http_request() {
+        let event = fixtures::v10::minimal_string_extension();
+        let request = BinaryDeserializer::deserialize_binary(event, http::request::Builder::new()).unwrap();
+
+        assert_eq!(request.headers()["ce-id"], "0001");
+        assert_eq!(request.headers()["ce-type"], "test_event.test_application");
     }
 }
