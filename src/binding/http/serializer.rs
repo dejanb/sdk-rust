@@ -7,6 +7,8 @@ use crate::binding::{
 };
 use crate::event::SpecVersion;
 use crate::message::{BinarySerializer, MessageAttributeValue, Result, StructuredSerializer, Error};
+use std::convert::TryFrom;
+use std::fmt::Debug;
 
 macro_rules! str_to_header_value {
     ($header_value:expr) => {
@@ -29,7 +31,10 @@ impl<T> Serializer<T> {
     }
 }
 
-impl BinarySerializer<http::request::Request<Vec<u8>>> for http::request::Builder {
+impl<T> BinarySerializer<http::request::Request<T>> for http::request::Builder
+    where T: TryFrom<Vec<u8>>,
+    <T as TryFrom<Vec<u8>>>::Error: Debug,
+{
 
     fn set_spec_version(mut self, sv: SpecVersion) -> Result<Self> {
         self = self.header(SPEC_VERSION_HEADER, &sv.to_string());
@@ -48,12 +53,14 @@ impl BinarySerializer<http::request::Request<Vec<u8>>> for http::request::Builde
         Ok(self)
     }
 
-    fn end_with_data(self, bytes: Vec<u8>) -> Result<http::request::Request<Vec<u8>>> {
-        self.body(bytes).map_err(|e| Error::Other { source: Box::new(e) })
+    fn end_with_data(self, bytes: Vec<u8>) -> Result<http::request::Request<T>> {
+        let body = T::try_from(bytes).unwrap();
+        self.body(body).map_err(|e| Error::Other { source: Box::new(e) })
     }
 
-    fn end(self) -> Result<http::request::Request<Vec<u8>>> {
-        self.body(Vec::new()).map_err(|e| Error::Other { source: Box::new(e) })
+    fn end(self) -> Result<http::request::Request<T>> {
+        let body = T::try_from(Vec::new()).unwrap();
+        self.body(body).map_err(|e| Error::Other { source: Box::new(e) })
     }
 
 }
@@ -104,13 +111,25 @@ impl<T> StructuredSerializer<T> for Serializer<T> {
 mod tests {
     use crate::message::BinaryDeserializer;
     use crate::test::fixtures;
+    use http::Request;
+    use bytes::Bytes;
 
     #[test]
     fn test_event_to_http_request() {
         let event = fixtures::v10::minimal_string_extension();
-        let request = BinaryDeserializer::deserialize_binary(event, http::request::Builder::new()).unwrap();
+        let request: Request<Vec<u8>> = BinaryDeserializer::deserialize_binary(event, http::request::Builder::new()).unwrap();
 
         assert_eq!(request.headers()["ce-id"], "0001");
         assert_eq!(request.headers()["ce-type"], "test_event.test_application");
+    }
+
+    #[test]
+    fn test_event_to_bytes_body() {
+        let event = fixtures::v10::full_binary_json_data_string_extension();
+        let request: Request<Bytes> = BinaryDeserializer::deserialize_binary(event, http::request::Builder::new()).unwrap();
+
+        assert_eq!(request.headers()["ce-id"], "0001");
+        assert_eq!(request.headers()["ce-type"], "test_event.test_application");
+        assert_eq!(request.body(), &Bytes::from(fixtures::json_data().to_string()));
     }
 }
