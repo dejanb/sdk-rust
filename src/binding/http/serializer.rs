@@ -31,7 +31,7 @@ impl<T> Serializer<T> {
     }
 }
 
-impl<T> BinarySerializer<http::request::Request<T>> for http::request::Builder
+impl<T> BinarySerializer<http::request::Request<Option<T>>> for http::request::Builder
     where T: TryFrom<Vec<u8>>,
     <T as TryFrom<Vec<u8>>>::Error: Debug,
 {
@@ -53,14 +53,14 @@ impl<T> BinarySerializer<http::request::Request<T>> for http::request::Builder
         Ok(self)
     }
 
-    fn end_with_data(self, bytes: Vec<u8>) -> Result<http::request::Request<T>> {
+    fn end_with_data(self, bytes: Vec<u8>) -> Result<http::request::Request<Option<T>>> {
         let body = T::try_from(bytes).unwrap();
-        self.body(body).map_err(|e| Error::Other { source: Box::new(e) })
+        self.body(Some(body)).map_err(|e| Error::Other { source: Box::new(e) })
     }
 
-    fn end(self) -> Result<http::request::Request<T>> {
-        let body = T::try_from(Vec::new()).unwrap();
-        self.body(body).map_err(|e| Error::Other { source: Box::new(e) })
+    fn end(self) -> Result<http::request::Request<Option<T>>> {
+        //let body = T::try_from(Vec::new()).unwrap();
+        self.body(None).map_err(|e| Error::Other { source: Box::new(e) })
     }
 
 }
@@ -117,7 +117,7 @@ mod tests {
     #[test]
     fn test_event_to_http_request() {
         let event = fixtures::v10::minimal_string_extension();
-        let request: Request<Vec<u8>> = BinaryDeserializer::deserialize_binary(event, http::request::Builder::new()).unwrap();
+        let request: Request<Option<Vec<u8>>> = BinaryDeserializer::deserialize_binary(event, http::request::Builder::new()).unwrap();
 
         assert_eq!(request.headers()["ce-id"], "0001");
         assert_eq!(request.headers()["ce-type"], "test_event.test_application");
@@ -126,10 +126,10 @@ mod tests {
     #[test]
     fn test_event_to_bytes_body() {
         let event = fixtures::v10::full_binary_json_data_string_extension();
-        let request: Request<Bytes> = BinaryDeserializer::deserialize_binary(event, http::request::Builder::new()).unwrap();
+        let request: Request<Option<Bytes>> = BinaryDeserializer::deserialize_binary(event, http::request::Builder::new()).unwrap();
 
         assert_eq!(request.headers()["ce-id"], "0001");
         assert_eq!(request.headers()["ce-type"], "test_event.test_application");
-        assert_eq!(request.body(), &Bytes::from(fixtures::json_data().to_string()));
+        assert_eq!(request.body().as_ref().unwrap(), &Bytes::from(fixtures::json_data().to_string()));
     }
 }
