@@ -59,7 +59,6 @@ impl<T> BinarySerializer<http::request::Request<Option<T>>> for http::request::B
     }
 
     fn end(self) -> Result<http::request::Request<Option<T>>> {
-        //let body = T::try_from(Vec::new()).unwrap();
         self.body(None).map_err(|e| Error::Other { source: Box::new(e) })
     }
 
